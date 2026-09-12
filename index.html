@@ -1,0 +1,1742 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>¡Juguemos a lanzar los dados! — Juego multijugador</title>
+  <meta name="description" content="Juego educativo multijugador de dos dados para sumar, clasificar resultados y analizar la justicia del juego." />
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+  <style>
+    :root{
+      --bg:#f5f3ff;
+      --panel:#ffffff;
+      --ink:#231942;
+      --muted:#6f6687;
+      --primary:#6d4bc3;
+      --primary2:#8c6bdd;
+      --line:#ddd5f3;
+      --good:#2f8f68;
+      --warn:#c17716;
+      --danger:#b94a48;
+      --shadow:0 16px 40px rgba(48,31,91,.12);
+      --radius:22px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, #e8e0ff 0, transparent 34%),
+        radial-gradient(circle at 90% 12%, #efeaff 0, transparent 30%),
+        var(--bg);
+    }
+    button,input,textarea{font:inherit}
+    button{cursor:pointer}
+    .app{width:min(1100px, calc(100% - 28px)); margin:0 auto; padding:28px 0 56px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand-icon{width:48px;height:48px;display:grid;place-items:center;border-radius:16px;background:#fff;box-shadow:var(--shadow);font-size:26px}
+    .brand h1{font-size:clamp(1.15rem,2vw,1.55rem);margin:0}
+    .brand p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+    .status-pill{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:999px;font-size:.85rem;white-space:nowrap}
+    .dot{width:9px;height:9px;border-radius:50%;background:#aaa}
+    .dot.online{background:#2faa72;box-shadow:0 0 0 4px rgba(47,170,114,.12)}
+    .dot.waiting{background:#e2a22f;box-shadow:0 0 0 4px rgba(226,162,47,.12)}
+    .card{background:var(--panel);border:1px solid rgba(109,75,195,.14);border-radius:var(--radius);box-shadow:var(--shadow);padding:clamp(18px,3vw,30px)}
+    .hero{text-align:center;padding:38px clamp(18px,4vw,48px)}
+    .hero .dice-row{font-size:54px;letter-spacing:10px;margin-bottom:8px}
+    .hero h2{font-size:clamp(1.7rem,4vw,2.7rem);margin:6px 0 8px}
+    .hero p{color:var(--muted);font-size:1.03rem;max-width:720px;margin:0 auto 26px;line-height:1.55}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    .choice-card{border:1px solid var(--line);border-radius:18px;padding:20px;text-align:left}
+    .choice-card h3{margin:0 0 6px}
+    .choice-card p{margin:0 0 16px;color:var(--muted);line-height:1.45}
+    label{display:block;font-weight:700;font-size:.92rem;margin-bottom:7px}
+    input,textarea{width:100%;border:1px solid var(--line);border-radius:14px;padding:12px 13px;background:#fff;color:var(--ink);outline:none}
+    input:focus,textarea:focus{border-color:var(--primary2);box-shadow:0 0 0 4px rgba(109,75,195,.1)}
+    textarea{min-height:100px;resize:vertical}
+    .btn{border:0;border-radius:14px;padding:12px 16px;font-weight:800;transition:.18s transform,.18s opacity,.18s box-shadow}
+    .btn:hover:not(:disabled){transform:translateY(-1px)}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;box-shadow:0 8px 18px rgba(109,75,195,.24)}
+    .btn-soft{background:#f0ecff;color:var(--primary)}
+    .btn-outline{background:#fff;border:1px solid var(--line);color:var(--ink)}
+    .btn-danger{background:#fff0f0;color:var(--danger);border:1px solid #f3cccc}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .center{justify-content:center}
+    .small{font-size:.86rem;color:var(--muted)}
+    .notice{padding:12px 14px;border-radius:14px;background:#faf8ff;border:1px solid var(--line);color:var(--muted);font-size:.9rem;line-height:1.45}
+    .room-code{font-size:clamp(2rem,7vw,4rem);font-weight:900;letter-spacing:.12em;color:var(--primary);margin:10px 0}
+    .waiting{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted)}
+    .spinner{width:18px;height:18px;border:3px solid #e8e2fb;border-top-color:var(--primary);border-radius:50%;animation:spin .9s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .game-grid{display:grid;grid-template-columns:1fr 1.35fr 1fr;gap:16px;align-items:stretch}
+    .player{border:2px solid var(--line);border-radius:20px;padding:18px;text-align:center;position:relative;background:#fff}
+    .player.active{border-color:var(--primary2);box-shadow:0 0 0 5px rgba(109,75,195,.08)}
+    .player.me::after{content:"TÚ";position:absolute;top:10px;right:10px;font-size:.68rem;font-weight:900;background:#eee8ff;color:var(--primary);padding:5px 7px;border-radius:999px}
+    .avatar{width:68px;height:68px;border-radius:50%;display:grid;place-items:center;background:#f1edff;margin:0 auto 9px;font-size:34px;border:1px solid var(--line)}
+    .player-name{font-size:1.07rem;font-weight:900;margin:0}
+    .player-choice{font-size:.85rem;color:var(--muted);margin:4px 0 11px}
+    .score{font-size:2.5rem;font-weight:950;color:var(--primary);line-height:1}
+    .score-label{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:800;margin-top:4px}
+    .board{border-radius:20px;background:linear-gradient(180deg,#faf8ff,#f4f0ff);border:1px solid var(--line);padding:22px;text-align:center;display:flex;flex-direction:column;justify-content:center;min-height:280px}
+    .phase-title{font-weight:900;font-size:1.15rem;margin-bottom:6px}
+    .phase-sub{color:var(--muted);font-size:.9rem;margin-bottom:16px}
+    .dice-stage{display:flex;align-items:center;justify-content:center;gap:18px;margin:8px 0 12px}
+    .die{width:92px;height:92px;border-radius:18px;background:#fff;border:2px solid #d7cff0;box-shadow:0 10px 24px rgba(69,47,122,.12);display:grid;place-items:center;font-size:64px;line-height:1;will-change:transform;transform-origin:center}
+    .dice-stage.rolling-stage{min-height:118px;perspective:700px}
+    .die.rolling:nth-child(1){animation:diceRollA .42s linear infinite}
+    .die.rolling:nth-child(2){animation:diceRollB .46s linear infinite}
+    .die.settle{animation:diceSettle .42s cubic-bezier(.16,.8,.28,1)}
+    @keyframes diceRollA{
+      0%{transform:translate(-7px,5px) rotate(-8deg) scale(.94)}
+      20%{transform:translate(2px,-16px) rotate(72deg) scale(1.07)}
+      45%{transform:translate(10px,-3px) rotate(158deg) scale(.98)}
+      70%{transform:translate(-1px,11px) rotate(248deg) scale(1.04)}
+      100%{transform:translate(-7px,5px) rotate(352deg) scale(.94)}
+    }
+    @keyframes diceRollB{
+      0%{transform:translate(8px,3px) rotate(10deg) scale(1.02)}
+      25%{transform:translate(-2px,-14px) rotate(-76deg) scale(.95)}
+      50%{transform:translate(-10px,1px) rotate(-168deg) scale(1.07)}
+      75%{transform:translate(3px,12px) rotate(-258deg) scale(.98)}
+      100%{transform:translate(8px,3px) rotate(-350deg) scale(1.02)}
+    }
+    @keyframes diceSettle{
+      0%{transform:translateY(-15px) rotate(16deg) scale(1.08)}
+      55%{transform:translateY(5px) rotate(-5deg) scale(.98)}
+      78%{transform:translateY(-2px) rotate(2deg) scale(1.01)}
+      100%{transform:translateY(0) rotate(0) scale(1)}
+    }
+
+    /* ===== Dados 3D ===== */
+    .dice3d-arena{
+      position:relative;
+      height:210px;
+      margin:8px 0 12px;
+      overflow:hidden;
+      border-radius:18px;
+      background:linear-gradient(180deg,rgba(255,255,255,.62),rgba(233,227,255,.72));
+      border:1px solid rgba(109,75,195,.12);
+      perspective:900px;
+    }
+    .dice3d-floor{
+      position:absolute;
+      left:13%;
+      right:13%;
+      bottom:22px;
+      height:30px;
+      border-radius:50%;
+      background:rgba(64,43,112,.09);
+      filter:blur(2px);
+    }
+    .die3d-wrap{
+      --cube:70px;
+      --half:35px;
+      position:absolute;
+      top:25px;
+      width:var(--cube);
+      height:var(--cube);
+      transform-style:preserve-3d;
+      z-index:2;
+    }
+    /* Cada dado conserva su propia pista horizontal para que nunca se superpongan. */
+    .die3d-wrap.one{left:18%}
+    .die3d-wrap.two{right:18%}
+    .cube3d{
+      position:relative;
+      width:100%;
+      height:100%;
+      transform-style:preserve-3d;
+      transform:rotateX(-18deg) rotateY(25deg);
+      will-change:transform;
+    }
+    .cube3d-face{
+      position:absolute;
+      inset:0;
+      background:#fff;
+      border:2px solid #cfc5eb;
+      border-radius:12px;
+      box-shadow:
+        inset 0 0 14px rgba(72,49,128,.07),
+        0 7px 15px rgba(47,31,89,.08);
+      backface-visibility:hidden;
+    }
+    .cube3d-face.front{transform:translateZ(var(--half))}
+    .cube3d-face.back{transform:rotateY(180deg) translateZ(var(--half))}
+    .cube3d-face.right{transform:rotateY(90deg) translateZ(var(--half))}
+    .cube3d-face.left{transform:rotateY(-90deg) translateZ(var(--half))}
+    .cube3d-face.top{transform:rotateX(90deg) translateZ(var(--half))}
+    .cube3d-face.bottom{transform:rotateX(-90deg) translateZ(var(--half))}
+    .pip3d{
+      position:absolute;
+      width:11px;
+      height:11px;
+      border-radius:50%;
+      background:#17131f;
+      transform:translate(-50%,-50%);
+      box-shadow:inset 0 1px 1px rgba(255,255,255,.18);
+    }
+    .pip3d.tl{left:27%;top:27%}.pip3d.tr{left:73%;top:27%}
+    .pip3d.ml{left:27%;top:50%}.pip3d.mr{left:73%;top:50%}
+    .pip3d.bl{left:27%;top:73%}.pip3d.br{left:73%;top:73%}
+    .pip3d.mc{left:50%;top:50%}
+
+    .die3d-wrap.rolling.one{animation:dice3dPathA 1.55s cubic-bezier(.18,.7,.22,1) both}
+    .die3d-wrap.rolling.two{animation:dice3dPathB 1.55s cubic-bezier(.18,.7,.22,1) both}
+    .cube3d.rolling{animation:dice3dSpin .25s linear infinite}
+    .cube3d.settle{transition:transform .48s cubic-bezier(.16,.85,.3,1.15)}
+
+    @keyframes dice3dSpin{
+      0%{transform:rotateX(0deg) rotateY(0deg) rotateZ(0deg)}
+      100%{transform:rotateX(360deg) rotateY(520deg) rotateZ(240deg)}
+    }
+    @keyframes dice3dPathA{
+      0%{transform:translate(-34px,-18px) rotateZ(-20deg) scale(.93)}
+      20%{transform:translate(-24px,66px) rotateZ(-8deg) scale(.98)}
+      38%{transform:translate(-12px,18px) rotateZ(10deg) scale(1.02)}
+      56%{transform:translate(-4px,88px) rotateZ(4deg) scale(1)}
+      73%{transform:translate(8px,52px) rotateZ(-5deg) scale(1.01)}
+      88%{transform:translate(3px,94px) rotateZ(2deg) scale(1)}
+      100%{transform:translate(0,100px) rotateZ(0deg) scale(1)}
+    }
+    @keyframes dice3dPathB{
+      0%{transform:translate(34px,-14px) rotateZ(22deg) scale(.93)}
+      20%{transform:translate(24px,68px) rotateZ(9deg) scale(.98)}
+      38%{transform:translate(12px,20px) rotateZ(-11deg) scale(1.02)}
+      56%{transform:translate(4px,89px) rotateZ(-4deg) scale(1)}
+      73%{transform:translate(-8px,54px) rotateZ(5deg) scale(1.01)}
+      88%{transform:translate(-3px,95px) rotateZ(-2deg) scale(1)}
+      100%{transform:translate(0,100px) rotateZ(0deg) scale(1)}
+    }
+    .dice3d-label{
+      position:absolute;
+      left:0;
+      right:0;
+      top:10px;
+      z-index:4;
+      font-size:.83rem;
+      font-weight:900;
+      color:var(--primary);
+      pointer-events:none;
+    }
+    .static-dice3d-arena{
+      height:135px;
+      background:transparent;
+      border:0;
+      overflow:visible;
+      margin:2px 0 4px;
+    }
+    .static-dice3d-arena .die3d-wrap{
+      top:17px;
+      --cube:56px;
+      --half:28px;
+    }
+    .static-dice3d-arena .pip3d{
+      width:9px;
+      height:9px;
+    }
+    .static-dice3d-arena .die3d-wrap.one{left:28%}
+    .static-dice3d-arena .die3d-wrap.two{right:28%}
+    @media(max-width:520px){
+      .dice3d-arena{height:190px}
+      .die3d-wrap{--cube:60px;--half:30px}
+      .pip3d{width:9px;height:9px}
+      .die3d-wrap.one{left:14%}
+      .die3d-wrap.two{right:14%}
+      .static-dice3d-arena .die3d-wrap{--cube:48px;--half:24px}
+      .static-dice3d-arena .pip3d{width:8px;height:8px}
+    }
+
+    .sum{font-size:1.7rem;font-weight:950;margin:6px 0}
+    .result-badge{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:800}
+    .reveal-step{opacity:0;transform:translateY(7px) scale(.98);transition:opacity .34s ease,transform .34s ease;pointer-events:none}
+    .reveal-step.show{opacity:1;transform:translateY(0) scale(1)}
+    .rolling-label{font-weight:900;color:var(--primary);letter-spacing:.02em;min-height:24px}
+    .turn-banner{margin-top:14px;padding:9px 11px;border-radius:12px;background:#ebe5ff;color:var(--primary);font-weight:900;font-size:.9rem}
+    .choice-buttons{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+    .big-option{border:2px solid var(--line);border-radius:18px;background:#fff;padding:18px 10px;font-weight:900;color:var(--ink)}
+    .big-option:hover:not(:disabled){border-color:var(--primary2);background:#fbfaff}
+    .big-option.selected{border-color:var(--primary);background:#f1edff;color:var(--primary)}
+    .roll-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}
+    .mini-stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}
+    .mini-stat b{display:block;font-size:1.35rem;color:var(--primary)}
+    .section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px}
+    .section-title h3{margin:0;font-size:1.1rem}
+    .history-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px}
+    table{width:100%;border-collapse:collapse;min-width:650px;background:#fff}
+    th,td{padding:10px 12px;border-bottom:1px solid #eee9f9;text-align:left;font-size:.86rem}
+    th{background:#f8f6ff;color:#5b4f78;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+    tr:last-child td{border-bottom:0}
+    .tag{display:inline-block;border-radius:999px;padding:4px 8px;font-size:.75rem;font-weight:800;background:#f0ecff;color:var(--primary)}
+    .post-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    .winner{font-size:clamp(1.65rem,4vw,2.5rem);font-weight:950;margin:6px 0}
+    .bar{height:13px;border-radius:999px;background:#eee9f9;overflow:hidden}
+    .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--primary2));border-radius:999px}
+    .analysis-q{margin-top:14px}
+    .analysis-q label{line-height:1.4}
+    .footer-note{text-align:center;margin-top:20px;color:var(--muted);font-size:.8rem;line-height:1.5}
+    .hidden{display:none!important}
+    .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(18px);background:#241b3c;color:#fff;padding:10px 14px;border-radius:12px;font-size:.88rem;opacity:0;pointer-events:none;transition:.22s;z-index:99;max-width:min(92vw,600px);text-align:center}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    @media(max-width:800px){
+      .topbar{align-items:flex-start}
+      .grid2,.post-grid{grid-template-columns:1fr}
+      .game-grid{grid-template-columns:1fr 1fr}
+      .board{grid-column:1/-1;grid-row:1}
+      .player{grid-row:2}
+    }
+    @media(max-width:520px){
+      .app{width:min(100% - 18px,1100px);padding-top:14px}
+      .topbar{gap:9px}
+      .brand p{display:none}
+      .status-pill{font-size:.75rem;padding:7px 9px}
+      .hero{padding:28px 16px}
+      .hero .dice-row{font-size:42px}
+      .game-grid{gap:9px}
+      .player{padding:14px 8px}
+      .avatar{width:54px;height:54px;font-size:28px}
+      .score{font-size:2rem}
+      .board{padding:17px 12px;min-height:260px}
+      .die{width:76px;height:76px;font-size:52px}
+      .choice-buttons{grid-template-columns:1fr}
+    }
+
+
+
+    /* ===== Mejoras finales: progreso, objetivo y análisis ===== */
+    .learning-goal{
+      max-width:860px;margin:0 auto 22px;padding:14px 16px;border-radius:16px;
+      background:linear-gradient(135deg,#f0edff,#fbfaff);border:1px solid var(--line);
+      text-align:left;display:flex;gap:12px;align-items:flex-start;color:var(--muted);line-height:1.5
+    }
+    .learning-goal-icon{font-size:1.45rem;line-height:1.2}.learning-goal b{color:var(--ink)}
+    .rule-steps{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    .rule-step{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fff;display:flex;gap:11px;align-items:flex-start}
+    .rule-n{width:30px;height:30px;flex:0 0 30px;border-radius:50%;display:grid;place-items:center;background:#eee8ff;color:var(--primary);font-weight:950}
+    .rule-step b{color:var(--ink)}.rule-step span{color:var(--muted);font-size:.9rem;line-height:1.45}
+    .target-strip{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 13px}
+    .target-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:7px 11px;background:#fff;border:1px solid var(--line);font-size:.78rem;font-weight:900;color:var(--primary)}
+    .turn-status{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;padding:6px 10px;border-radius:999px;background:#eee8ff;color:var(--primary);font-size:.75rem;font-weight:950;letter-spacing:.03em}
+    .player.active .turn-status{background:var(--primary);color:#fff}
+    .player:not(.active) .turn-status{visibility:hidden}
+    .score-progress{position:relative;height:10px;background:#eee9f9;border-radius:999px;overflow:visible;margin:12px 2px 5px}
+    .score-progress>span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--primary),var(--primary2));transition:width .3s ease}
+    .reward-marker{position:absolute;top:50%;width:2px;height:17px;background:#d8a226;transform:translate(-50%,-50%)}
+    .progress-caption{display:flex;justify-content:space-between;gap:6px;color:var(--muted);font-size:.68rem;font-weight:750}
+    .category-chip{display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--line);background:#faf8ff;border-radius:999px;padding:5px 9px;font-size:.72rem;font-weight:850;color:#5e527a;margin-bottom:5px}
+    .math-feedback{margin-top:9px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid var(--line);color:var(--muted);font-size:.82rem;line-height:1.45}
+    .math-feedback b{color:var(--ink)}
+    .theory-actions{display:flex;justify-content:center;margin-top:18px}
+    .theory-card{margin-top:16px;border:1px solid #cfc5eb;background:linear-gradient(180deg,#faf8ff,#f4f0ff);border-radius:18px;padding:18px}
+    .theory-card h4{margin:0 0 8px;font-size:1.05rem}.theory-card p{margin:7px 0;color:var(--muted);line-height:1.55}
+    .theory-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .theory-stat{border:1px solid var(--line);background:#fff;border-radius:14px;padding:12px;text-align:center}
+    .theory-stat b{display:block;color:var(--primary);font-size:1.35rem}.theory-stat span{font-size:.78rem;color:var(--muted)}
+    .latest-row td{background:#fbf9ff}
+    @media(max-width:700px){.rule-steps,.theory-grid{grid-template-columns:1fr}}
+
+    /* ===== Integración del avatar ===== */
+    .avatar-setup{
+      max-width:900px;margin:0 auto 24px;padding:18px;border:1px solid var(--line);
+      border-radius:20px;background:linear-gradient(180deg,#fbfaff,#f5f1ff);text-align:left
+    }
+    .avatar-setup-head{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+    .avatar-setup-preview{display:flex;align-items:center;gap:15px;min-width:260px}
+    .avatar-preview-shell{width:106px;height:112px;border-radius:18px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;overflow:hidden;box-shadow:0 8px 22px rgba(48,31,91,.08)}
+    .avatar-preview-shell canvas{width:96px;height:auto;image-rendering:pixelated}
+    .avatar-setup-copy h3{margin:0 0 4px}.avatar-setup-copy p{margin:0;color:var(--muted);font-size:.88rem}
+    .avatar-mini-summary{margin-top:5px;color:var(--primary);font-size:.8rem;font-weight:800}
+
+    .avatar-modal-backdrop{position:fixed;inset:0;background:rgba(25,17,49,.6);backdrop-filter:blur(5px);display:grid;place-items:center;padding:18px;z-index:120}
+    .avatar-modal-backdrop.hidden{display:none!important}
+    .avatar-modal{width:min(980px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:24px;border:1px solid var(--line);box-shadow:0 28px 90px rgba(28,18,59,.32);padding:22px}
+    .avatar-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:18px}
+    .avatar-modal-head h2{margin:0 0 4px}.avatar-modal-head p{margin:0;color:var(--muted);line-height:1.45}
+    .modal-close{width:42px;height:42px;border-radius:14px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:1.25rem;font-weight:900}
+    .avatar-editor-grid{display:grid;grid-template-columns:280px 1fr;gap:20px}
+    .editor-preview{background:linear-gradient(180deg,#f7f4ff,#eee8ff);border:1px solid var(--line);border-radius:20px;min-height:360px;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:18px;position:sticky;top:0}
+    .editor-preview canvas{width:235px;height:auto;image-rendering:pixelated;filter:drop-shadow(0 14px 12px rgba(48,31,91,.16))}
+    .editor-preview strong{font-size:1.05rem;margin-top:7px}.editor-preview span{font-size:.78rem;color:var(--muted);margin-top:3px;text-align:center}
+    .editor-section{border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+    .editor-section h3{margin:0 0 4px}.editor-section>p{margin:0 0 14px;color:var(--muted);font-size:.85rem}
+    .avatar-color-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}
+    .avatar-color-btn{border:1px solid var(--line);background:#fff;border-radius:14px;padding:9px 5px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:.72rem;font-weight:800;color:var(--ink)}
+    .avatar-color-btn.selected{box-shadow:0 0 0 3px rgba(109,75,195,.22);border-color:var(--primary)}
+    .avatar-swatch{width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px #c8bfe7}
+    .avatar-hat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+    .avatar-hat-btn{position:relative;border:1px solid var(--line);background:#fff;border-radius:15px;padding:8px;color:var(--ink);text-align:center;min-height:132px}
+    .avatar-hat-btn.selected{box-shadow:0 0 0 3px rgba(109,75,195,.2);border-color:var(--primary)}
+    .avatar-hat-btn.locked{background:#f8f7fb;color:#948ca5;cursor:not-allowed}
+    .avatar-hat-btn canvas{display:block;width:80px;height:88px;object-fit:contain;margin:0 auto 3px;image-rendering:pixelated}
+    .avatar-hat-btn strong{display:block;font-size:.72rem;line-height:1.15}.avatar-hat-btn small{display:block;margin-top:3px;font-size:.64rem;color:var(--muted)}
+    .avatar-lock{position:absolute;right:7px;top:7px;background:#241b3c;color:#fff;border-radius:999px;width:25px;height:25px;display:grid;place-items:center;font-size:.72rem}
+    .starter-note{display:inline-flex;align-items:center;gap:6px;background:#f0ecff;color:var(--primary);border-radius:999px;padding:5px 9px;font-size:.72rem;font-weight:900;margin-bottom:10px}
+
+    .player-avatar-shell{width:105px;height:112px;border-radius:18px;background:#f5f1ff;border:1px solid var(--line);margin:0 auto 8px;display:grid;place-items:center;position:relative;overflow:visible;transition:.2s transform}
+    .player-avatar-shell canvas{width:98px;height:auto;image-rendering:pixelated;filter:drop-shadow(0 7px 5px rgba(43,28,80,.14))}
+    .player-avatar-shell.rolling{animation:avatarRollBounce .52s ease-in-out infinite alternate}
+    @keyframes avatarRollBounce{0%{transform:translateY(0) rotate(-2deg)}100%{transform:translateY(-11px) rotate(3deg)}}
+    .lobby-avatar-shell{width:126px;height:135px;border-radius:20px;background:#f4f0ff;border:1px solid var(--line);display:grid;place-items:center;margin:0 auto 9px;overflow:visible}
+    .lobby-avatar-shell canvas{width:118px;height:auto;image-rendering:pixelated}
+
+    .reward-chip{display:inline-flex;align-items:center;gap:5px;margin-top:9px;padding:6px 9px;border-radius:999px;background:#fff7dd;color:#966511;border:1px solid #f0d994;font-size:.72rem;font-weight:900}
+    .shop-btn{margin-top:9px;width:100%;padding:9px 10px;border:0;border-radius:12px;background:linear-gradient(135deg,#e49b18,#f2bd43);color:#3d2600;font-weight:900;box-shadow:0 6px 14px rgba(193,119,22,.18)}
+    .shop-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .shop-item{border:1px solid var(--line);border-radius:16px;background:#fff;padding:10px;text-align:center;color:var(--ink)}
+    .shop-item canvas{width:100px;height:110px;display:block;margin:auto;image-rendering:pixelated}
+    .shop-item strong{display:block;font-size:.82rem;line-height:1.15}.shop-item p{font-size:.68rem;color:var(--muted);margin:4px 0 8px}.shop-item .btn{width:100%;padding:9px 8px;font-size:.75rem}
+    .shop-empty{padding:20px;border:1px dashed var(--line);border-radius:16px;color:var(--muted);text-align:center}
+    .reward-notice{background:linear-gradient(135deg,#fff6d9,#fffdf3);border:1px solid #efd590;color:#76500e;border-radius:16px;padding:12px 14px;margin-bottom:15px;line-height:1.45}
+    .reward-notice b{color:#4b3104}
+
+    @media(max-width:800px){
+      .avatar-editor-grid{grid-template-columns:1fr}.editor-preview{position:relative;min-height:300px}.avatar-hat-grid,.shop-grid{grid-template-columns:repeat(3,1fr)}
+    }
+    @media(max-width:520px){
+      .avatar-color-grid{grid-template-columns:repeat(4,1fr)}.avatar-hat-grid,.shop-grid{grid-template-columns:repeat(2,1fr)}
+      .avatar-setup-head{justify-content:center}.avatar-setup-preview{justify-content:center}.avatar-setup{text-align:center}
+      .player-avatar-shell{width:86px;height:94px}.player-avatar-shell canvas{width:82px}
+    }
+
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">🎲</div>
+      <div>
+        <h1>¡Juguemos a lanzar los dados!</h1>
+        <p>Juego multijugador · suma, clasificación y análisis</p>
+      </div>
+    </div>
+    <div class="status-pill"><span id="netDot" class="dot"></span><span id="netText">Sin conexión</span></div>
+  </div>
+
+  <main id="screenStart" class="card hero">
+    <div class="dice-row">⚄ ⚂</div>
+    <h2>Dos computadores, una misma partida</h2>
+    <p>Conéctense a la misma sala y jueguen por turnos. En cada lanzamiento se tiran <b>dos dados</b>, se suman sus resultados y el punto se entrega según si la suma tiene <b>1 dígito</b> o <b>2 dígitos</b>. Gana quien llegue primero a <b>20 puntos</b>. Al alcanzar <b>5 puntos</b>, podrás desbloquear un nuevo accesorio para tu avatar.</p>
+    <div class="learning-goal">
+      <div class="learning-goal-icon" aria-hidden="true">🎯</div>
+      <div><b>Objetivo matemático:</b> sumar resultados de dos dados, distinguir sumas de 1 y 2 dígitos y usar los datos de la partida para analizar si ambas categorías tienen la misma posibilidad de aparecer.</div>
+    </div>
+    <div style="max-width:430px;margin:0 auto 22px;text-align:left">
+      <label for="playerName">Tu nombre</label>
+      <input id="playerName" maxlength="24" placeholder="Ej.: Felipe" autocomplete="off">
+    </div>
+
+    <div class="avatar-setup" id="avatarSetup">
+      <div class="avatar-setup-head">
+        <div class="avatar-setup-preview">
+          <div class="avatar-preview-shell"><canvas id="startAvatarCanvas" width="300" height="330"></canvas></div>
+          <div class="avatar-setup-copy">
+            <h3>Tu avatar</h3>
+            <p>Elige color y un accesorio inicial antes de entrar a la sala.</p>
+            <div id="startAvatarSummary" class="avatar-mini-summary">Amarillo · Sin sombrero</div>
+          </div>
+        </div>
+        <button class="btn btn-soft" id="customizeAvatarBtn" type="button">🎨 Personalizar avatar</button>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="choice-card">
+        <h3>🏠 Crear una sala</h3>
+        <p>Serás quien inicia la sala y mantiene el estado de la partida.</p>
+        <button class="btn btn-primary" id="createBtn">Crear sala</button>
+      </div>
+      <div class="choice-card">
+        <h3>🔗 Unirse a una sala</h3>
+        <p>Escribe el código que te entregue el otro jugador.</p>
+        <label for="joinCode">Código</label>
+        <input id="joinCode" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;margin-bottom:10px">
+        <button class="btn btn-soft" id="joinBtn">Unirse</button>
+      </div>
+    </div>
+    <div class="notice" style="margin-top:18px">
+      Este juego usa una conexión directa entre navegadores mediante WebRTC. Para jugar entre dos computadores, publícalo en GitHub Pages y abre la misma URL en ambos equipos.
+    </div>
+  </main>
+
+  <section id="screenLobby" class="card hero hidden">
+    <div class="small">CÓDIGO DE SALA</div>
+    <div id="roomCodeDisplay" class="room-code">------</div>
+    <div class="actions center" style="margin-bottom:16px">
+      <button class="btn btn-outline" id="copyCodeBtn">Copiar código</button>
+      <button class="btn btn-outline" id="copyLinkBtn">Copiar enlace</button>
+    </div>
+    <div id="lobbyPlayers" class="grid2" style="max-width:680px;margin:20px auto"></div>
+
+    <div class="choice-card" style="max-width:820px;margin:18px auto;text-align:left">
+      <h3 style="margin-bottom:12px">📖 ¿Cómo jugar?</h3>
+      <div class="rule-steps">
+        <div class="rule-step"><div class="rule-n">1</div><span><b>Definan quién comienza.</b> Cada estudiante lanza dos dados. Quien obtenga la mayor suma inicia y elige primero su categoría.</span></div>
+        <div class="rule-step"><div class="rule-n">2</div><span><b>Las categorías son distintas.</b> Un jugador representa <b>sumas de 1 dígito (2 a 9)</b> y el otro <b>sumas de 2 dígitos (10 a 12)</b>.</span></div>
+        <div class="rule-step"><div class="rule-n">3</div><span><b>En cada turno:</b> lanza, suma los dos dados y clasifica el resultado. El punto se asigna automáticamente al jugador cuya categoría coincide.</span></div>
+        <div class="rule-step"><div class="rule-n">4</div><span><b>Meta:</b> gana quien llegue primero a <b>20 puntos</b>. Al alcanzar <b>5 puntos</b>, cada jugador obtiene una recompensa para desbloquear un nuevo accesorio.</span></div>
+      </div>
+
+      <div class="notice" style="margin-top:16px">
+        <b>Importante:</b> el juego registra automáticamente cada lanzamiento en la tabla inferior. Al finalizar, usarán esos datos para analizar si el juego fue justo para ambos participantes.
+      </div>
+    </div>
+
+    <div id="waitingBox" class="waiting"><span class="spinner"></span><span>Esperando al segundo jugador…</span></div>
+    <div class="actions center" style="margin-top:22px">
+      <button id="startGameBtn" class="btn btn-primary hidden">Entendí las reglas · Comenzar</button>
+      <button id="leaveBtn" class="btn btn-danger">Salir</button>
+    </div>
+  </section>
+
+  <section id="screenGame" class="hidden">
+    <div class="target-strip" aria-label="Metas de la partida">
+      <span class="target-pill">🏆 Meta: 20 puntos</span>
+      <span class="target-pill">🎁 Recompensa: 5 puntos</span>
+      <span class="target-pill" id="gameRollCount">🎲 0 lanzamientos</span>
+    </div>
+    <div class="game-grid">
+      <div id="playerHostCard" class="player"></div>
+      <div class="board">
+        <div id="phaseContent" aria-live="polite"></div>
+      </div>
+      <div id="playerGuestCard" class="player"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="section-title">
+        <h3>📋 Registro de la partida</h3>
+        <span id="historyCount" class="small">0 lanzamientos</span>
+      </div>
+      <div id="historyEmpty" class="notice">Aún no hay lanzamientos de la partida.</div>
+      <div id="historyWrap" class="history-wrap hidden">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Lanza</th><th>Dado 1</th><th>Dado 2</th><th>Suma</th><th>Tipo</th><th>Punto para</th></tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="screenFinished" class="hidden">
+    <div class="card hero">
+      <div style="font-size:52px">🏆</div>
+      <div id="winnerText" class="winner">Partida terminada</div>
+      <p id="winnerSub" style="margin-bottom:18px"></p>
+      <div id="finalScores" class="grid2" style="max-width:680px;margin:0 auto 18px"></div>
+      <div class="actions center">
+        <button id="showAnalysisBtn" class="btn btn-primary">Analizar el juego</button>
+        <button id="restartBtn" class="btn btn-outline hidden">Jugar otra vez</button>
+      </div>
+    </div>
+
+    <div id="analysisCard" class="card hidden" style="margin-top:16px">
+      <div class="section-title"><h3>🔎 Análisis del juego</h3><span class="small">Primero observa lo que ocurrió en esta partida.</span></div>
+      <div class="post-grid">
+        <div>
+          <div class="roll-summary">
+            <div class="mini-stat"><b id="oneDigitCount">0</b>resultados de 1 dígito</div>
+            <div class="mini-stat"><b id="twoDigitCount">0</b>resultados de 2 dígitos</div>
+          </div>
+          <div class="small" style="margin:8px 0 5px">Distribución observada</div>
+          <div class="bar"><span id="oneDigitBar" style="width:0%"></span></div>
+          <p id="observedText" class="small"></p>
+        </div>
+        <div>
+          <div class="analysis-q">
+            <label>1. ¿Qué tipo de suma apareció con mayor frecuencia? Justifica usando al menos un dato de la partida.</label>
+            <textarea placeholder="Usa los conteos o porcentajes observados…"></textarea>
+          </div>
+          <div class="analysis-q">
+            <label>2. ¿Crees que el juego fue justo para ambos jugadores? Explica tu respuesta usando los resultados.</label>
+            <textarea placeholder="Relaciona tu explicación con los datos…"></textarea>
+          </div>
+          <div class="analysis-q">
+            <label>3. ¿Cómo modificarías las categorías o las reglas para que el juego fuera más equilibrado?</label>
+            <textarea placeholder="Propón una modificación y justifica por qué ayudaría…"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="notice" style="margin-top:16px">
+        Primero respondan a partir de los datos observados. Después pueden comparar sus ideas con el espacio muestral de los dos dados.
+      </div>
+      <div class="theory-actions">
+        <button id="showTheoryBtn" class="btn btn-outline" type="button">Comprobar con el espacio muestral</button>
+      </div>
+      <div id="theoryCard" class="theory-card hidden">
+        <h4>📐 ¿Qué ocurre teóricamente?</h4>
+        <p>Con dos dados hay <b>36 resultados equiprobables</b>. Las sumas de <b>2 a 9</b> ocupan 30 de esos resultados, mientras que las sumas de <b>10 a 12</b> ocupan solo 6.</p>
+        <div class="theory-grid">
+          <div class="theory-stat"><b>30/36 = 5/6</b><span>≈ 83,3% para una suma de 1 dígito</span></div>
+          <div class="theory-stat"><b>6/36 = 1/6</b><span>≈ 16,7% para una suma de 2 dígitos</span></div>
+        </div>
+        <p id="theoryCompare"></p>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer-note">
+    Juego educativo multijugador. Las categorías se asignan de forma distinta para comparar su comportamiento durante una misma secuencia de lanzamientos. La conexión entre equipos utiliza PeerJS/WebRTC y requiere Internet.
+  </div>
+</div>
+
+
+
+<div id="avatarEditorModal" class="avatar-modal-backdrop hidden" aria-hidden="true">
+  <div class="avatar-modal" role="dialog" aria-modal="true" aria-labelledby="avatarEditorTitle">
+    <div class="avatar-modal-head">
+      <div>
+        <h2 id="avatarEditorTitle">🎨 Personaliza tu avatar</h2>
+        <p>El color siempre está disponible. Los accesorios marcados con candado se desbloquean como recompensas durante las partidas.</p>
+      </div>
+      <button class="modal-close" id="closeAvatarEditor" type="button" aria-label="Cerrar">×</button>
+    </div>
+    <div class="avatar-editor-grid">
+      <div class="editor-preview">
+        <canvas id="editorAvatarCanvas" width="300" height="330"></canvas>
+        <strong id="editorAvatarName">Tu avatar</strong>
+        <span id="editorAvatarSummary">Amarillo · Sin sombrero</span>
+      </div>
+      <div>
+        <div class="editor-section">
+          <h3>Color</h3>
+          <p>Escoge el color base de tu personaje.</p>
+          <div id="avatarColorGrid" class="avatar-color-grid"></div>
+        </div>
+        <div class="editor-section">
+          <span class="starter-note">🎁 Accesorios iniciales + colección desbloqueada</span>
+          <h3>Accesorio</h3>
+          <p>Los objetos bloqueados podrán comprarse con la recompensa que se obtiene al llegar a 5 puntos.</p>
+          <div id="avatarHatGrid" class="avatar-hat-grid"></div>
+        </div>
+        <div class="actions" style="justify-content:flex-end">
+          <button class="btn btn-primary" id="saveAvatarEditor" type="button">Guardar avatar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="shopModal" class="avatar-modal-backdrop hidden" aria-hidden="true">
+  <div class="avatar-modal" role="dialog" aria-modal="true" aria-labelledby="shopTitle" style="width:min(820px,96vw)">
+    <div class="avatar-modal-head">
+      <div>
+        <h2 id="shopTitle">🎁 Tienda de accesorios</h2>
+        <p>Premio por alcanzar 5 puntos durante la partida.</p>
+      </div>
+      <button class="modal-close" id="closeShop" type="button" aria-label="Cerrar">×</button>
+    </div>
+    <div class="reward-notice"><b>¡Llegaste a 5 puntos!</b> Puedes elegir <b>un accesorio nuevo</b>. La compra usa tu recompensa y <b>no resta puntos</b> de la partida.</div>
+    <div id="shopGrid" class="shop-grid"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  const diceGlyph = n => ['','⚀','⚁','⚂','⚃','⚄','⚅'][n] || '⚀';
+  const other = id => id === 'host' ? 'guest' : 'host';
+  const myId = () => role;
+  const playerLabel = id => state?.players?.[id]?.name || (id === 'host' ? 'Jugador 1' : 'Jugador 2');
+  const WIN_SCORE = 20;
+  const REWARD_SCORE = 5;
+
+  let peer = null;
+  let conn = null;
+  let role = null;
+  let roomCode = null;
+  let state = null;
+  let toastTimer = null;
+  let lastRollKey = '';
+  let visualRollId = null;
+  let visualRollInterval = null;
+  let visualRollTimeouts = [];
+
+  // ===== Avatar compartido =====
+  const AVATAR_PROFILE_KEY = 'dados_avatar_profile_v1';
+  const AVATAR_COLORS = [
+    {id:'red',name:'Rojo',hex:'#e62632'}, {id:'blue',name:'Azul',hex:'#2f7fea'},
+    {id:'green',name:'Verde',hex:'#24b96a'}, {id:'yellow',name:'Amarillo',hex:'#ffd83f'},
+    {id:'pink',name:'Rosado',hex:'#ef79b6'}, {id:'orange',name:'Naranjo',hex:'#ff921e'},
+    {id:'purple',name:'Morado',hex:'#8e38dc'}, {id:'white',name:'Blanco',hex:'#eef2f6'},
+    {id:'black',name:'Negro',hex:'#333b47'}, {id:'cyan',name:'Cian',hex:'#45d5e5'},
+    {id:'lime',name:'Lima',hex:'#9be63f'}, {id:'brown',name:'Café',hex:'#9c6436'}
+  ];
+  const AVATAR_HATS = [
+    {id:'none',name:'Sin sombrero',file:null,width:0,x:0,bottom:0,starter:true},
+    {id:'crown',name:'Corona',file:'crown.png',width:76,x:-2,bottom:10,starter:true},
+    {id:'party',name:'Sombrero de fiesta',file:'party.png',width:68,x:10,bottom:10,starter:true},
+    {id:'flower',name:'Flor',file:'flower.png',width:72,x:-42,bottom:4,starter:true},
+    {id:'hardhat',name:'Casco de construcción',file:'hardhat.png',width:108,x:1,bottom:14,starter:true},
+    {id:'wizard',name:'Sombrero de mago',file:'wizard.png',width:128,x:-5,bottom:15},
+    {id:'fedora',name:'Sombrero fedora',file:'fedora.png',width:132,x:-3,bottom:14},
+    {id:'halo',name:'Halo',file:'halo.png',width:96,x:0,bottom:-12},
+    {id:'pumpkin',name:'Calabaza',file:'pumpkin.png',width:112,x:-5,bottom:14},
+    {id:'blue-cap',name:'Gorra azul',file:'blue-cap.png',width:102,x:-1,bottom:13},
+    {id:'viking',name:'Casco vikingo',file:'viking.png',width:120,x:-2,bottom:15},
+    {id:'top-hat',name:'Sombrero de copa',file:'top-hat.png',width:106,x:-2,bottom:15},
+    {id:'straw',name:'Sombrero de paja',file:'straw.png',width:126,x:-2,bottom:13},
+    {id:'beanie',name:'Gorro de lana',file:'beanie.png',width:104,x:-2,bottom:15},
+    {id:'toilet-paper',name:'Papel higiénico',file:'toilet-paper.png',width:58,x:25,bottom:4}
+  ];
+  const STARTER_HATS = AVATAR_HATS.filter(h => h.starter).map(h => h.id);
+  const avatarImageCache = new Map();
+  const avatarWalkAnchors = [
+    {x:154,y:124},{x:151,y:119},{x:151,y:125},{x:151,y:133},
+    {x:154,y:163},{x:155,y:163},{x:157,y:112},{x:150,y:110},
+    {x:157,y:112},{x:151,y:134},{x:155,y:163},{x:157,y:163}
+  ];
+  let localAvatar = loadLocalAvatar();
+  let avatarFrameTimer = null;
+  let lastShopPromptKey = '';
+
+  function cloneAvatar(a){
+    return JSON.parse(JSON.stringify(sanitizeAvatar(a)));
+  }
+
+  function sanitizeAvatar(a){
+    const src = a || {};
+    const colorId = AVATAR_COLORS.some(c=>c.id===src.colorId) ? src.colorId : 'yellow';
+    const unlocked = Array.from(new Set([...(Array.isArray(src.unlockedHats)?src.unlockedHats:[]), ...STARTER_HATS]))
+      .filter(id => AVATAR_HATS.some(h=>h.id===id));
+    let hatId = AVATAR_HATS.some(h=>h.id===src.hatId) ? src.hatId : 'none';
+    if(!unlocked.includes(hatId)) hatId = 'none';
+    return {colorId, hatId, unlockedHats: unlocked};
+  }
+
+  function loadLocalAvatar(){
+    try{return sanitizeAvatar(JSON.parse(localStorage.getItem(AVATAR_PROFILE_KEY)||'null'));}
+    catch(e){return sanitizeAvatar(null);}
+  }
+
+  function saveLocalAvatar(a){
+    localAvatar = sanitizeAvatar(a);
+    try{ localStorage.setItem(AVATAR_PROFILE_KEY, JSON.stringify(localAvatar)); }catch(e){}
+    renderStartAvatar();
+  }
+
+  function avatarLoadImage(src){
+    if(avatarImageCache.has(src)) return avatarImageCache.get(src);
+    const p = new Promise((resolve,reject)=>{
+      const img = new Image(); img.onload=()=>resolve(img); img.onerror=()=>reject(new Error('No se pudo cargar '+src)); img.src=src;
+    });
+    avatarImageCache.set(src,p); return p;
+  }
+
+  function avatarFramePath(avatar,motion='idle',frame=1){
+    const file = motion==='idle' ? 'idle.png' : `walk-${String(frame).padStart(2,'0')}.png`;
+    return `assets/avatar/base/${avatar.colorId}/${file}`;
+  }
+
+  function avatarAnchor(motion,frame){
+    return motion==='idle' ? {x:150,y:140} : avatarWalkAnchors[Math.max(0,Math.min(11,frame-1))];
+  }
+
+  async function drawAvatar(canvas, avatarLike, motion='idle', frame=1){
+    if(!canvas) return;
+    const requestedHat = avatarLike?._preview && AVATAR_HATS.some(h=>h.id===avatarLike.hatId) ? avatarLike.hatId : null;
+    const avatar = sanitizeAvatar(avatarLike);
+    if(requestedHat) avatar.hatId = requestedHat;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const body = await avatarLoadImage(avatarFramePath(avatar,motion,frame));
+    ctx.drawImage(body,0,0,canvas.width,canvas.height);
+    const hat = AVATAR_HATS.find(h=>h.id===avatar.hatId);
+    if(!hat || !hat.file) return;
+    const img = await avatarLoadImage(`assets/hats/${hat.file}`);
+    const anchor = avatarAnchor(motion,frame);
+    const w = hat.width;
+    const h = w*(img.naturalHeight/img.naturalWidth);
+    const cx = anchor.x + hat.x;
+    const bottom = anchor.y + hat.bottom;
+    ctx.drawImage(img,cx-w/2,bottom-h,w,h);
+  }
+
+  function avatarSummary(avatarLike){
+    const a = sanitizeAvatar(avatarLike);
+    const c = AVATAR_COLORS.find(x=>x.id===a.colorId);
+    const h = AVATAR_HATS.find(x=>x.id===a.hatId);
+    return `${c?.name||a.colorId} · ${h?.name||'Sin sombrero'}`;
+  }
+
+  function renderStartAvatar(){
+    drawAvatar($('#startAvatarCanvas'),localAvatar).catch(console.error);
+    if($('#startAvatarSummary')) $('#startAvatarSummary').textContent = avatarSummary(localAvatar);
+  }
+
+  function renderAvatarEditor(){
+    drawAvatar($('#editorAvatarCanvas'),localAvatar).catch(console.error);
+    const nm = nameFromInput();
+    $('#editorAvatarName').textContent = nm ? `Avatar de ${nm}` : 'Tu avatar';
+    $('#editorAvatarSummary').textContent = avatarSummary(localAvatar);
+
+    const cg = $('#avatarColorGrid');
+    cg.innerHTML = AVATAR_COLORS.map(c=>`<button type="button" class="avatar-color-btn ${c.id===localAvatar.colorId?'selected':''}" data-avatar-color="${c.id}"><span class="avatar-swatch" style="background:${c.hex}"></span>${esc(c.name)}</button>`).join('');
+    cg.querySelectorAll('[data-avatar-color]').forEach(btn=>btn.addEventListener('click',()=>{
+      localAvatar.colorId = btn.dataset.avatarColor; localAvatar=sanitizeAvatar(localAvatar); saveLocalAvatar(localAvatar); renderAvatarEditor();
+    }));
+
+    const hg = $('#avatarHatGrid');
+    hg.innerHTML = '';
+    AVATAR_HATS.forEach(h=>{
+      const unlocked = localAvatar.unlockedHats.includes(h.id);
+      const b = document.createElement('button');
+      b.type='button'; b.className='avatar-hat-btn'+(h.id===localAvatar.hatId?' selected':'')+(unlocked?'':' locked');
+      b.disabled = !unlocked;
+      const can = document.createElement('canvas'); can.width=300; can.height=330;
+      b.appendChild(can);
+      const strong=document.createElement('strong'); strong.textContent=h.name; b.appendChild(strong);
+      const small=document.createElement('small'); small.textContent=unlocked?(h.starter?'Inicial':'Desbloqueado'):'Se desbloquea a los 5 puntos'; b.appendChild(small);
+      if(!unlocked){ const lock=document.createElement('span'); lock.className='avatar-lock'; lock.textContent='🔒'; b.appendChild(lock); }
+      if(unlocked) b.addEventListener('click',()=>{ localAvatar.hatId=h.id; saveLocalAvatar(localAvatar); renderAvatarEditor(); });
+      hg.appendChild(b);
+      drawAvatar(can,{...localAvatar,hatId:h.id,_preview:true}).catch(console.error);
+    });
+  }
+
+  function openAvatarEditor(){
+    renderAvatarEditor();
+    $('#avatarEditorModal').classList.remove('hidden');
+    $('#avatarEditorModal').setAttribute('aria-hidden','false');
+  }
+  function closeAvatarEditor(){ $('#avatarEditorModal').classList.add('hidden'); $('#avatarEditorModal').setAttribute('aria-hidden','true'); renderStartAvatar(); }
+
+  function renderCanvasById(id, avatar, motion='idle', frame=1){
+    drawAvatar(document.getElementById(id),avatar,motion,frame).catch(console.error);
+  }
+
+  function renderLobbyAvatars(){
+    if(!state) return;
+    if(state.players.host?.name) renderCanvasById('lobbyAvatarHost',state.players.host.avatar);
+    if(state.players.guest?.name) renderCanvasById('lobbyAvatarGuest',state.players.guest.avatar);
+  }
+
+  function renderPlayerAvatars(){
+    if(!state) return;
+    ['host','guest'].forEach(id=>renderCanvasById(`playerAvatar-${id}`,state.players[id].avatar));
+    clearInterval(avatarFrameTimer); avatarFrameTimer=null;
+    const pending = state.pendingRoll || state.pendingInitialRoll;
+    if(!pending) return;
+    const id = pending.by;
+    const shell = document.querySelector(`[data-player-avatar-shell="${id}"]`);
+    shell?.classList.add('rolling');
+    let f=1;
+    avatarFrameTimer=setInterval(()=>{
+      const c=document.getElementById(`playerAvatar-${id}`);
+      if(!c){clearInterval(avatarFrameTimer);avatarFrameTimer=null;return;}
+      drawAvatar(c,state.players[id].avatar,'walk',f).catch(console.error);
+      f=f%12+1;
+    },95);
+  }
+
+  function premiumHatsLockedFor(player){
+    const a=sanitizeAvatar(player?.avatar);
+    return AVATAR_HATS.filter(h=>!h.starter && !a.unlockedHats.includes(h.id));
+  }
+
+  function openShop(){
+    if(!state || !role) return;
+    const p=state.players[role];
+    if(!p?.reward5Available) return;
+    const items=premiumHatsLockedFor(p);
+    const grid=$('#shopGrid'); grid.innerHTML='';
+    if(!items.length){
+      grid.innerHTML='<div class="shop-empty" style="grid-column:1/-1">Ya tienes todos los accesorios disponibles.</div>';
+    }else{
+      items.forEach(h=>{
+        const card=document.createElement('div'); card.className='shop-item';
+        const can=document.createElement('canvas'); can.width=300;can.height=330; card.appendChild(can);
+        const st=document.createElement('strong');st.textContent=h.name;card.appendChild(st);
+        const ptxt=document.createElement('p');ptxt.textContent='1 recompensa de 5 puntos';card.appendChild(ptxt);
+        const b=document.createElement('button');b.type='button';b.className='btn btn-primary';b.textContent='Comprar y equipar';b.addEventListener('click',()=>{dispatch('purchaseHat',h.id);closeShop();});card.appendChild(b);
+        grid.appendChild(card); drawAvatar(can,{...p.avatar,hatId:h.id,_preview:true}).catch(console.error);
+      });
+    }
+    $('#shopModal').classList.remove('hidden'); $('#shopModal').setAttribute('aria-hidden','false');
+  }
+  function closeShop(){ $('#shopModal').classList.add('hidden'); $('#shopModal').setAttribute('aria-hidden','true'); }
+
+  function maybePromptShop(){
+    if(!state || !role) return;
+    const p=state.players[role];
+    if(!p?.reward5Available) return;
+    const key=`${roomCode||'room'}-${role}-${p.score}-${p.reward5Claimed}`;
+    if(lastShopPromptKey===key) return;
+    lastShopPromptKey=key;
+    setTimeout(()=>{ if(state?.players?.[role]?.reward5Available) openShop(); },450);
+  }
+
+
+  function freshState(hostName, hostAvatar=localAvatar){
+    return {
+      version: 3,
+      phase: 'lobby',
+      players: {
+        host: { name: hostName, initRoll: null, choice: null, score: 0, avatar: cloneAvatar(hostAvatar), reward5Available:false, reward5Claimed:false },
+        guest:{ name: '', initRoll: null, choice: null, score: 0, avatar: sanitizeAvatar(null), reward5Available:false, reward5Claimed:false }
+      },
+      currentTurn: null,
+      initialWinner: null,
+      pendingInitialRoll: null,
+      roll: null,
+      pendingRoll: null,
+      history: [],
+      winner: null
+    };
+  }
+
+  function setNet(text, mode=''){
+    $('#netText').textContent = text;
+    $('#netDot').className = 'dot ' + mode;
+  }
+
+  function toast(msg){
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+
+  function showOnly(id){
+    ['#screenStart','#screenLobby','#screenGame','#screenFinished'].forEach(sel => $(sel).classList.add('hidden'));
+    $(id).classList.remove('hidden');
+  }
+
+  function nameFromInput(){
+    return $('#playerName').value.trim().replace(/\s+/g,' ').slice(0,24);
+  }
+
+  function randomCode(){
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = '';
+    crypto.getRandomValues(new Uint32Array(6)).forEach(n => s += alphabet[n % alphabet.length]);
+    return s;
+  }
+
+  function roomPeerId(code){
+    return 'dados-' + code.toLowerCase();
+  }
+
+  function safeDestroy(){
+    clearRollVisualTimers();
+    try{ conn?.close(); }catch(e){}
+    try{ peer?.destroy(); }catch(e){}
+    conn = null; peer = null;
+  }
+
+  function initHost(){
+    const name = nameFromInput();
+    if(!name){ toast('Escribe tu nombre antes de crear la sala.'); $('#playerName').focus(); return; }
+    safeDestroy();
+    role = 'host';
+    roomCode = randomCode();
+    state = freshState(name, localAvatar);
+    setNet('Creando sala…','waiting');
+    showOnly('#screenLobby');
+    renderLobby();
+
+    peer = new Peer(roomPeerId(roomCode), { debug: 0 });
+    peer.on('open', () => {
+      setNet('Sala lista','waiting');
+      renderLobby();
+    });
+    peer.on('connection', incoming => {
+      if(conn && conn.open){ incoming.close(); return; }
+      conn = incoming;
+      setupConnection();
+    });
+    peer.on('error', err => {
+      console.error(err);
+      if(err.type === 'unavailable-id'){
+        toast('Ese código ya estaba ocupado. Creando otro…');
+        setTimeout(initHost, 500);
+      }else{
+        setNet('Error de conexión','');
+        toast('No se pudo abrir la sala. Revisa internet y vuelve a intentar.');
+      }
+    });
+  }
+
+  function initGuest(){
+    const name = nameFromInput();
+    const code = $('#joinCode').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+    if(!name){ toast('Escribe tu nombre antes de unirte.'); $('#playerName').focus(); return; }
+    if(code.length !== 6){ toast('Escribe un código de sala de 6 caracteres.'); $('#joinCode').focus(); return; }
+
+    safeDestroy();
+    role = 'guest';
+    roomCode = code;
+    state = freshState('');
+    state.players.guest.name = name;
+    state.players.guest.avatar = cloneAvatar(localAvatar);
+    setNet('Conectando…','waiting');
+    showOnly('#screenLobby');
+    renderLobby();
+
+    peer = new Peer(undefined, { debug: 0 });
+    peer.on('open', () => {
+      conn = peer.connect(roomPeerId(roomCode), { reliable: true, metadata: { name } });
+      setupConnection();
+    });
+    peer.on('error', err => {
+      console.error(err);
+      setNet('No conectado','');
+      if(err.type === 'peer-unavailable') toast('No se encontró esa sala. Verifica el código.');
+      else toast('No se pudo conectar con la sala.');
+    });
+  }
+
+  function setupConnection(){
+    if(!conn) return;
+    conn.on('open', () => {
+      setNet('Conectados','online');
+      if(role === 'guest'){
+        send({ type:'hello', name:nameFromInput(), avatar:cloneAvatar(localAvatar) });
+      } else {
+        setTimeout(() => sync(), 100);
+      }
+    });
+    conn.on('data', handleMessage);
+    conn.on('close', () => {
+      setNet('Rival desconectado','waiting');
+      toast('La otra persona se desconectó.');
+      if(role === 'host' && state){
+        state.players.guest.name = '';
+        if(state.phase === 'lobby') renderLobby();
+      }
+    });
+    conn.on('error', err => { console.error(err); setNet('Error de conexión',''); });
+  }
+
+  function send(payload){
+    if(conn && conn.open) conn.send(payload);
+  }
+
+  function sync(){
+    if(role !== 'host') return;
+    send({ type:'state', state });
+    if(state?.players?.host?.avatar) saveLocalAvatar(state.players.host.avatar);
+    render();
+  }
+
+  function handleMessage(msg){
+    if(!msg || typeof msg !== 'object') return;
+
+    if(role === 'host'){
+      if(msg.type === 'hello'){
+        state.players.guest.name = String(msg.name || 'Jugador 2').trim().slice(0,24);
+        state.players.guest.avatar = cloneAvatar(msg.avatar);
+        sync();
+        return;
+      }
+      if(msg.type === 'action'){
+        hostApplyAction('guest', msg.action, msg.value);
+        return;
+      }
+    }
+
+    if(role === 'guest' && msg.type === 'state'){
+      state = msg.state;
+      if(state?.players?.guest?.avatar) saveLocalAvatar(state.players.guest.avatar);
+      render();
+    }
+  }
+
+  function dispatch(action, value=null){
+    if(role === 'host') hostApplyAction('host', action, value);
+    else send({ type:'action', action, value });
+  }
+
+  function randDie(){
+    const a = new Uint32Array(1);
+    crypto.getRandomValues(a);
+    return (a[0] % 6) + 1;
+  }
+
+  function clearRollVisualTimers(){
+    if(visualRollInterval){
+      clearInterval(visualRollInterval);
+      visualRollInterval = null;
+    }
+    visualRollTimeouts.forEach(clearTimeout);
+    visualRollTimeouts = [];
+  }
+
+  function randomVisualDie(){
+    return Math.floor(Math.random() * 6) + 1;
+  }
+
+  const facePips3D = {
+    1:['mc'],
+    2:['tl','br'],
+    3:['tl','mc','br'],
+    4:['tl','tr','bl','br'],
+    5:['tl','tr','mc','bl','br'],
+    6:['tl','tr','ml','mr','bl','br']
+  };
+
+  const targetRotation3D = {
+    1:'rotateX(0deg) rotateY(0deg) rotateZ(0deg)',
+    2:'rotateX(-90deg) rotateY(0deg) rotateZ(0deg)',
+    3:'rotateX(0deg) rotateY(-90deg) rotateZ(0deg)',
+    4:'rotateX(0deg) rotateY(90deg) rotateZ(0deg)',
+    5:'rotateX(90deg) rotateY(0deg) rotateZ(0deg)',
+    6:'rotateX(0deg) rotateY(180deg) rotateZ(0deg)'
+  };
+
+  function face3DHTML(n, cls){
+    return `<div class="cube3d-face ${cls}">${facePips3D[n].map(p => `<span class="pip3d ${p}"></span>`).join('')}</div>`;
+  }
+
+  function cube3DHTML(id, value=1, rolling=false){
+    // Caras opuestas reales: 1-6, 2-5, 3-4.
+    return `<div id="${id}" class="cube3d ${rolling ? 'rolling' : ''}" style="${rolling ? '' : `transform:${targetRotation3D[value]}`}">
+      ${face3DHTML(1,'front')}
+      ${face3DHTML(6,'back')}
+      ${face3DHTML(3,'right')}
+      ${face3DHTML(4,'left')}
+      ${face3DHTML(2,'top')}
+      ${face3DHTML(5,'bottom')}
+    </div>`;
+  }
+
+  function dice3DArenaHTML(d1=1,d2=1,{rolling=false,label='',staticMode=false,prefix='dice'}={}){
+    return `<div class="dice3d-arena ${staticMode ? 'static-dice3d-arena' : ''}">
+      ${staticMode ? '' : '<div class="dice3d-floor"></div>'}
+      ${label ? `<div class="dice3d-label">${esc(label)}</div>` : ''}
+      <div id="${prefix}Wrap1" class="die3d-wrap one ${rolling ? 'rolling' : ''}">
+        ${cube3DHTML(prefix+'Cube1',d1,rolling)}
+      </div>
+      <div id="${prefix}Wrap2" class="die3d-wrap two ${rolling ? 'rolling' : ''}">
+        ${cube3DHTML(prefix+'Cube2',d2,rolling)}
+      </div>
+    </div>`;
+  }
+
+  function settle3DCube(prefix, index, value){
+    const cube = $(`#${prefix}Cube${index}`);
+    if(!cube) return;
+    cube.classList.remove('rolling');
+    cube.classList.add('settle');
+    cube.style.transform = targetRotation3D[value];
+  }
+
+  function animate3DPair(r, prefix, mode='play'){
+    if(!r || visualRollId === r.id) return;
+    clearRollVisualTimers();
+    visualRollId = r.id;
+
+    visualRollTimeouts.push(setTimeout(() => {
+      settle3DCube(prefix,1,r.d1);
+      settle3DCube(prefix,2,r.d2);
+      const label = $(`#${prefix}Label`);
+      if(label) label.textContent = '¡Dados detenidos!';
+    }, 1550));
+
+    if(mode === 'play'){
+      visualRollTimeouts.push(setTimeout(() => reveal('#rollSum'), 1980));
+      visualRollTimeouts.push(setTimeout(() => reveal('#rollCategory'), 2360));
+      visualRollTimeouts.push(setTimeout(() => { reveal('#rollPoint'); reveal('#rollReason'); }, 2740));
+    } else {
+      visualRollTimeouts.push(setTimeout(() => reveal('#initialRollResult'), 1980));
+    }
+  }
+
+  function setDieFace(selector, value){
+    const el = $(selector);
+    if(el) el.textContent = diceGlyph(value);
+  }
+
+  function reveal(selector){
+    const el = $(selector);
+    if(el) el.classList.add('show');
+  }
+
+  function animatePendingRoll(r){
+    if(!r || visualRollId === r.id) return;
+
+    clearRollVisualTimers();
+    visualRollId = r.id;
+
+    const die1 = $('#animDie1');
+    const die2 = $('#animDie2');
+    if(!die1 || !die2) return;
+
+    // Fase 1: los dados cambian de cara mientras se mueven.
+    visualRollInterval = setInterval(() => {
+      setDieFace('#animDie1', randomVisualDie());
+      setDieFace('#animDie2', randomVisualDie());
+    }, 85);
+
+    // Fase 2: se detienen en los resultados definitivos.
+    visualRollTimeouts.push(setTimeout(() => {
+      if(visualRollInterval){
+        clearInterval(visualRollInterval);
+        visualRollInterval = null;
+      }
+      setDieFace('#animDie1', r.d1);
+      setDieFace('#animDie2', r.d2);
+      die1.classList.remove('rolling');
+      die2.classList.remove('rolling');
+      // Reinicia la animación de asentamiento en ambos dados.
+      void die1.offsetWidth;
+      die1.classList.add('settle');
+      die2.classList.add('settle');
+      const label = $('#rollingLabel');
+      if(label) label.textContent = '¡Dados detenidos!';
+    }, 1550));
+
+    // Fase 3: aparece la suma.
+    visualRollTimeouts.push(setTimeout(() => {
+      reveal('#rollSum');
+      const label = $('#rollingLabel');
+      if(label) label.textContent = 'Sumamos los resultados…';
+    }, 1980));
+
+    // Fase 4: se clasifica como 1 o 2 dígitos.
+    visualRollTimeouts.push(setTimeout(() => {
+      reveal('#rollCategory');
+    }, 2380));
+
+    // Fase 5: se anuncia quién obtiene el punto.
+    visualRollTimeouts.push(setTimeout(() => {
+      reveal('#rollPoint');
+      const label = $('#rollingLabel');
+      if(label) label.textContent = 'Resultado del turno';
+    }, 2780));
+  }
+
+  function hostApplyAction(actor, action, value){
+    if(role !== 'host' || !state) return;
+
+    if(action === 'start'){
+      if(actor !== 'host' || state.phase !== 'lobby' || !state.players.guest.name) return;
+      state.phase = 'initial';
+      state.players.host.initRoll = null;
+      state.players.guest.initRoll = null;
+      state.initialWinner = null;
+      state.pendingInitialRoll = null;
+      state.roll = null;
+      state.pendingRoll = null;
+      sync();
+      return;
+    }
+
+    if(action === 'initialRoll'){
+      if(state.phase !== 'initial' || state.players[actor].initRoll || state.pendingInitialRoll) return;
+
+      const d1 = randDie(), d2 = randDie();
+      const initialId = `initial-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+
+      state.pendingInitialRoll = {
+        id: initialId,
+        by: actor,
+        d1, d2,
+        total: d1+d2
+      };
+
+      // Los dos equipos ven primero la animación 3D.
+      sync();
+
+      setTimeout(() => {
+        if(!state || !state.pendingInitialRoll || state.pendingInitialRoll.id !== initialId) return;
+
+        state.players[actor].initRoll = {
+          dice:[d1,d2],
+          total:d1+d2
+        };
+        state.pendingInitialRoll = null;
+
+        const a = state.players.host.initRoll;
+        const b = state.players.guest.initRoll;
+
+        if(a && b){
+          if(a.total === b.total){
+            sync();
+            setTimeout(() => {
+              if(state.phase !== 'initial' || state.pendingInitialRoll) return;
+              state.players.host.initRoll = null;
+              state.players.guest.initRoll = null;
+              state.initialWinner = null;
+              sync();
+              toast('Empate: ambos deberán volver a lanzar.');
+            }, 1300);
+          } else {
+            state.initialWinner = a.total > b.total ? 'host' : 'guest';
+            state.currentTurn = state.initialWinner;
+            sync();
+            setTimeout(() => {
+              if(state.phase !== 'initial' || state.pendingInitialRoll) return;
+              state.phase = 'choose';
+              sync();
+            }, 1500);
+          }
+        } else {
+          sync();
+        }
+      }, 2600);
+
+      return;
+    }
+
+    if(action === 'choose'){
+      if(state.phase !== 'choose') return;
+      if(actor !== state.initialWinner) return;
+      if(state.players.host.choice || state.players.guest.choice) return;
+      if(value !== 'one' && value !== 'two') return;
+
+      state.players[actor].choice = value;
+      state.players[other(actor)].choice = value === 'one' ? 'two' : 'one';
+      state.phase = 'play';
+      sync();
+      return;
+    }
+
+    if(action === 'purchaseHat'){
+      const p = state.players[actor];
+      if(!p || p.score < REWARD_SCORE || !p.reward5Available || p.reward5Claimed) return;
+      const hat = AVATAR_HATS.find(h=>h.id===value && !h.starter);
+      if(!hat) return;
+      p.avatar = sanitizeAvatar(p.avatar);
+      if(p.avatar.unlockedHats.includes(hat.id)) return;
+      p.avatar.unlockedHats.push(hat.id);
+      p.avatar.hatId = hat.id;
+      p.reward5Available = false;
+      p.reward5Claimed = true;
+      sync();
+      return;
+    }
+
+    if(action === 'roll'){
+      if(state.phase !== 'play' || state.currentTurn !== actor || state.pendingRoll) return;
+
+      const d1 = randDie(), d2 = randDie(), total = d1+d2;
+      const category = total >= 10 ? 'two' : 'one';
+      const scored = ['host','guest'].filter(id => state.players[id].choice === category);
+      const rollId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+
+      state.pendingRoll = {
+        id: rollId,
+        n: state.history.length + 1,
+        by: actor,
+        d1, d2, total, category, scored
+      };
+
+      // Ambos computadores reciben primero el lanzamiento pendiente.
+      // Así los dos pueden mostrar la misma secuencia de animación.
+      sync();
+
+      setTimeout(() => {
+        if(!state || !state.pendingRoll || state.pendingRoll.id !== rollId) return;
+
+        const entry = {
+          ...state.pendingRoll,
+          at: Date.now()
+        };
+
+        entry.scored.forEach(id => {
+          const p = state.players[id];
+          const before = p.score;
+          p.score += 1;
+          if(before < REWARD_SCORE && p.score >= REWARD_SCORE && !p.reward5Claimed && premiumHatsLockedFor(p).length){
+            p.reward5Available = true;
+          }
+        });
+
+        state.roll = entry;
+        state.history.push(entry);
+        state.pendingRoll = null;
+
+        const winners = ['host','guest'].filter(id => state.players[id].score >= WIN_SCORE);
+        if(winners.length){
+          state.phase = 'finished';
+          state.winner = winners.length === 2 ? 'tie' : winners[0];
+        } else {
+          state.currentTurn = other(actor);
+        }
+        sync();
+      }, 3400);
+
+      return;
+    }
+
+    if(action === 'restart'){
+      if(actor !== 'host' || state.phase !== 'finished') return;
+      const h = state.players.host.name, g = state.players.guest.name;
+      const ha = cloneAvatar(state.players.host.avatar), ga = cloneAvatar(state.players.guest.avatar);
+      state = freshState(h,ha);
+      state.players.guest.name = g;
+      state.players.guest.avatar = ga;
+      state.phase = 'initial';
+      sync();
+      return;
+    }
+  }
+
+  function render(){
+    if(!state) return;
+    if(state.phase === 'lobby') {
+      showOnly('#screenLobby');
+      renderLobby();
+    } else if(state.phase === 'finished') {
+      showOnly('#screenFinished');
+      renderFinished();
+    } else {
+      showOnly('#screenGame');
+      renderGame();
+    }
+  }
+
+  function renderLobby(){
+    $('#roomCodeDisplay').textContent = roomCode || '------';
+    const hostName = state?.players?.host?.name || (role === 'host' ? nameFromInput() : 'Esperando…');
+    const guestName = state?.players?.guest?.name || (role === 'guest' ? nameFromInput() : '');
+    $('#lobbyPlayers').innerHTML = `
+      <div class="choice-card" style="text-align:center">
+        <div class="lobby-avatar-shell">${hostName?'<canvas id="lobbyAvatarHost" width="300" height="330"></canvas>':'…'}</div>
+        <h3>${esc(hostName || 'Jugador 1')}</h3>
+        <p style="margin:0">${hostName ? 'Conectado ✓' : 'Esperando…'}</p>
+      </div>
+      <div class="choice-card" style="text-align:center">
+        <div class="lobby-avatar-shell">${guestName?'<canvas id="lobbyAvatarGuest" width="300" height="330"></canvas>':'…'}</div>
+        <h3>${esc(guestName || 'Jugador 2')}</h3>
+        <p style="margin:0">${guestName ? 'Conectado ✓' : 'Esperando conexión…'}</p>
+      </div>`;
+    renderLobbyAvatars();
+    const both = !!(hostName && guestName && conn?.open);
+    $('#waitingBox').classList.toggle('hidden', both);
+    $('#startGameBtn').classList.toggle('hidden', !(role === 'host' && both));
+  }
+
+  function renderPlayer(id, el){
+    const p = state.players[id];
+    const choiceText = p.choice === 'one' ? '1 dígito · sumas 2–9' : p.choice === 'two' ? '2 dígitos · sumas 10–12' : 'Sin elección';
+    const choiceIcon = p.choice === 'one' ? '1️⃣' : p.choice === 'two' ? '2️⃣' : '—';
+    const isActive = state.currentTurn === id && state.phase === 'play';
+    el.className = 'player' + (isActive ? ' active' : '') + (role === id ? ' me' : '');
+    const rewardHTML = role===id && p.reward5Available
+      ? `<button type="button" class="shop-btn" data-open-shop>🎁 Elegir accesorio</button>`
+      : (p.reward5Claimed ? `<div class="reward-chip">✓ Accesorio de ${REWARD_SCORE} puntos obtenido</div>` : '');
+    const pct = Math.min(100, Math.round((p.score / WIN_SCORE) * 100));
+    const marker = Math.round((REWARD_SCORE / WIN_SCORE) * 100);
+    el.innerHTML = `
+      <div class="turn-status">🎲 TURNO ACTIVO</div>
+      <div class="player-avatar-shell" data-player-avatar-shell="${id}"><canvas id="playerAvatar-${id}" width="300" height="330"></canvas></div>
+      <p class="player-name">${esc(p.name || (id==='host'?'Jugador 1':'Jugador 2'))}</p>
+      <div class="category-chip">${choiceIcon} ${esc(choiceText)}</div>
+      <div class="score">${p.score}</div>
+      <div class="score-label">de ${WIN_SCORE} puntos</div>
+      <div class="score-progress" aria-label="Progreso: ${p.score} de ${WIN_SCORE} puntos">
+        <span style="width:${pct}%"></span><i class="reward-marker" style="left:${marker}%" title="Recompensa a los ${REWARD_SCORE} puntos"></i>
+      </div>
+      <div class="progress-caption"><span>0</span><span>🎁 ${REWARD_SCORE}</span><span>🏆 ${WIN_SCORE}</span></div>
+      ${rewardHTML}`;
+    el.querySelector('[data-open-shop]')?.addEventListener('click',openShop);
+  }
+
+  function renderGame(){
+    if($('#gameRollCount')) $('#gameRollCount').textContent = `🎲 ${state.history.length} lanzamiento${state.history.length===1?'':'s'}`;
+    renderPlayer('host', $('#playerHostCard'));
+    renderPlayer('guest', $('#playerGuestCard'));
+    renderPhase();
+    renderHistory();
+    renderPlayerAvatars();
+    maybePromptShop();
+  }
+
+  function renderPhase(){
+    const box = $('#phaseContent');
+
+    if(state.phase === 'initial'){
+      const pending = state.pendingInitialRoll;
+      const me = state.players[role];
+      const h = state.players.host.initRoll, g = state.players.guest.initRoll;
+      const mine = me.initRoll;
+      const both = h && g;
+
+      if(pending){
+        box.innerHTML = `
+          <div class="phase-title">🎯 Lanzamiento inicial de ${esc(playerLabel(pending.by))}</div>
+          <div class="phase-sub">Los dos jugadores están viendo el mismo lanzamiento.</div>
+
+          ${dice3DArenaHTML(pending.d1,pending.d2,{
+            rolling:true,
+            label:'¡Los dados están rodando!',
+            prefix:'initial3d'
+          }).replace('class="dice3d-label"', 'id="initial3dLabel" class="dice3d-label"')}
+
+          <div id="initialRollResult" class="sum reveal-step">
+            ${pending.d1} + ${pending.d2} = ${pending.total}
+          </div>
+
+          <div class="actions center" style="margin-top:12px">
+            <button class="btn btn-primary" disabled>Lanzando… 🎲</button>
+          </div>`;
+        animate3DPair(pending,'initial3d','initial');
+        return;
+      }
+
+      clearRollVisualTimers();
+      visualRollId = null;
+
+      let msg = '';
+      if(both){
+        if(h.total === g.total) msg = '¡Empate! Ambos deberán volver a lanzar.';
+        else msg = `${esc(playerLabel(state.initialWinner))} obtuvo la mayor suma. Comenzará y escogerá primero su categoría.`;
+      } else if(mine){
+        msg = `Tu total fue ${mine.total}. Esperando el lanzamiento del otro jugador…`;
+      } else {
+        msg = 'Cada jugador lanza dos dados. Quien obtenga la mayor suma comenzará y escogerá primero su categoría.';
+      }
+
+      box.innerHTML = `
+        <div class="phase-title">🎯 ¿Quién comienza?</div>
+        <div class="phase-sub">${msg}</div>
+
+        <div class="grid2" style="gap:10px;text-align:left">
+          ${initialMini('host',h)}
+          ${initialMini('guest',g)}
+        </div>
+
+        <div class="actions center" style="margin-top:16px">
+          <button class="btn btn-primary" id="initialRollBtn"
+            ${(mine || both) ? 'disabled' : ''}>
+            ${mine ? 'Lanzamiento realizado ✓' : (both ? 'Comparando resultados…' : 'Lanzar los dados 🎲')}
+          </button>
+        </div>`;
+      $('#initialRollBtn')?.addEventListener('click', () => {
+        const b = $('#initialRollBtn');
+        if(b) b.disabled = true;
+        dispatch('initialRoll');
+      });
+      return;
+    }
+
+    if(state.phase === 'choose'){
+      const chooser = state.initialWinner;
+      const iChoose = role === chooser;
+
+      box.innerHTML = `
+        <div class="phase-title">🧠 Elección de categoría</div>
+        <div class="phase-sub">
+          ${iChoose
+            ? `Como obtuviste la mayor suma inicial, escoge tu categoría. ${esc(playerLabel(other(role)))} recibirá automáticamente la otra.`
+            : `${esc(playerLabel(chooser))} obtuvo la mayor suma inicial y está escogiendo. Tú recibirás automáticamente la categoría restante.`}
+        </div>
+        <div class="choice-buttons">
+          <button class="big-option" id="chooseOne" ${iChoose ? '' : 'disabled'}>1 DÍGITO<br><span class="small">sumas de 2 a 9</span></button>
+          <button class="big-option" id="chooseTwo" ${iChoose ? '' : 'disabled'}>2 DÍGITOS<br><span class="small">sumas de 10 a 12</span></button>
+        </div>
+        <div class="turn-banner">
+          ${iChoose ? 'Las categorías deben ser diferentes. Elige una opción.' : 'Esperando la elección del otro jugador…'}
+        </div>`;
+      $('#chooseOne')?.addEventListener('click', () => dispatch('choose','one'));
+      $('#chooseTwo')?.addEventListener('click', () => dispatch('choose','two'));
+      return;
+    }
+
+    if(state.phase === 'play'){
+      const pending = state.pendingRoll;
+
+      // Mientras existe un lanzamiento pendiente, ambos computadores ven
+      // la animación antes de que cambie el puntaje o el turno.
+      if(pending){
+        const pointsText = pending.scored.length
+          ? `¡Punto para ${pending.scored.map(playerLabel).join(' y ')}!`
+          : 'No se asignó punto.';
+
+        box.innerHTML = `
+          <div class="phase-title">🎲 Lanzamiento de ${esc(playerLabel(pending.by))}</div>
+          <div class="phase-sub">Ambos jugadores ven el mismo resultado sincronizado.</div>
+
+          ${dice3DArenaHTML(pending.d1,pending.d2,{
+            rolling:true,
+            label:'¡Los dados están rodando!',
+            prefix:'play3d'
+          }).replace('class="dice3d-label"', 'id="play3dLabel" class="dice3d-label"')}
+
+          <div id="rollSum" class="sum reveal-step">${pending.d1} + ${pending.d2} = ${pending.total}</div>
+
+          <div id="rollCategory" class="reveal-step">
+            <span class="result-badge">
+              ${pending.category==='one'?'1️⃣':'2️⃣'}
+              Número de ${pending.category==='one'?'1 dígito':'2 dígitos'}
+            </span>
+          </div>
+
+          <div id="rollPoint" class="turn-banner reveal-step">${esc(pointsText)}</div>
+          <div class="math-feedback reveal-step" id="rollReason"><b>${pending.d1} + ${pending.d2} = ${pending.total}</b>. Como ${pending.total} ${pending.category==='one'?'tiene 1 dígito':'tiene 2 dígitos'}, corresponde a la categoría <b>${pending.category==='one'?'1 dígito':'2 dígitos'}</b>.</div>
+
+          <div class="actions center" style="margin-top:16px">
+            <button class="btn btn-primary" disabled>Lanzando… 🎲</button>
+          </div>`;
+
+        animate3DPair(pending,'play3d','play');
+        return;
+      }
+
+      clearRollVisualTimers();
+      visualRollId = null;
+
+      const r = state.roll;
+      const myTurn = state.currentTurn === role;
+      const d1 = r?.d1 || 1, d2 = r?.d2 || 1;
+
+      const pointsText = r
+        ? (r.scored.length ? `¡Punto para ${r.scored.map(playerLabel).join(' y ')}!` : 'No se asignó punto.')
+        : 'Aún no se ha realizado el primer lanzamiento.';
+
+      box.innerHTML = `
+        <div class="phase-title">🎲 Turno de ${esc(playerLabel(state.currentTurn))}</div>
+        <div class="phase-sub">${myTurn ? 'Es tu turno. Presiona el botón para lanzar los dos dados.' : 'Observa el turno del otro jugador.'}</div>
+
+        ${dice3DArenaHTML(d1,d2,{
+          rolling:false,
+          staticMode:true,
+          prefix:'static3d'
+        })}
+
+        ${r ? `
+          <div class="sum">${r.d1} + ${r.d2} = ${r.total}</div>
+          <div class="result-badge">${r.category==='one'?'1️⃣':'2️⃣'} Número de ${r.category==='one'?'1 dígito':'2 dígitos'}</div>
+          <div class="turn-banner">${esc(pointsText)}</div>
+          <div class="math-feedback"><b>${r.d1} + ${r.d2} = ${r.total}</b>. El total ${r.total} ${r.category==='one'?'tiene 1 dígito':'tiene 2 dígitos'}, por eso pertenece a <b>${r.category==='one'?'1 dígito':'2 dígitos'}</b>.</div>
+        ` : ''}
+
+        <div class="actions center" style="margin-top:16px">
+          <button class="btn btn-primary" id="rollBtn" ${myTurn ? '' : 'disabled'}>
+            ${myTurn ? 'Lanzar los dados 🎲' : 'Esperando…'}
+          </button>
+        </div>`;
+
+      $('#rollBtn')?.addEventListener('click', () => {
+        const b = $('#rollBtn');
+        if(b) b.disabled = true;
+        dispatch('roll');
+      });
+    }
+  }
+
+  function initialMini(id, data){
+    return `<div class="mini-stat">
+      <span class="small">${esc(playerLabel(id))}</span>
+      ${data
+        ? `<b style="margin-top:4px">${data.dice[0]} + ${data.dice[1]} = ${data.total}</b><span>Lanzamiento registrado</span>`
+        : `<b>—</b><span>Sin lanzar</span>`}
+    </div>`;
+  }
+
+  function renderHistory(){
+    const h = state.history || [];
+    $('#historyCount').textContent = `${h.length} lanzamiento${h.length===1?'':'s'}`;
+    $('#historyEmpty').classList.toggle('hidden', h.length>0);
+    $('#historyWrap').classList.toggle('hidden', h.length===0);
+    $('#historyBody').innerHTML = h.map((r,i) => `
+      <tr class="${i===h.length-1?'latest-row':''}">
+        <td>${r.n}</td>
+        <td>${esc(playerLabel(r.by))}</td>
+        <td>${r.d1}</td>
+        <td>${r.d2}</td>
+        <td><b>${r.total}</b></td>
+        <td><span class="tag">${r.category==='one'?'1 dígito':'2 dígitos'}</span></td>
+        <td>${r.scored.length ? esc(r.scored.map(playerLabel).join(' y ')) : '—'}</td>
+      </tr>`).join('');
+  }
+
+  function renderFinished(){
+    clearRollVisualTimers();
+    visualRollId = null;
+    const w = state.winner;
+    $('#winnerText').textContent = w === 'tie' ? '¡Empate!' : `¡Ganó ${playerLabel(w)}!`;
+    $('#winnerSub').textContent = w === 'tie'
+      ? `Ambos alcanzaron ${WIN_SCORE} puntos con el mismo lanzamiento.`
+      : `${playerLabel(w)} fue el primer jugador en alcanzar ${WIN_SCORE} puntos.`;
+
+    $('#finalScores').innerHTML = ['host','guest'].map(id => `
+      <div class="choice-card" style="text-align:center">
+        <div class="lobby-avatar-shell" style="width:110px;height:118px"><canvas id="finalAvatar-${id}" width="300" height="330"></canvas></div>
+        <div class="small">${esc(playerLabel(id))}</div>
+        <div class="score" style="margin:8px 0">${state.players[id].score}</div>
+        <div class="small">de ${WIN_SCORE} puntos · ${state.players[id].choice==='one'?'Eligió 1 dígito':'Eligió 2 dígitos'}</div>
+      </div>`).join('');
+
+    ['host','guest'].forEach(id=>renderCanvasById(`finalAvatar-${id}`,state.players[id].avatar));
+
+    const one = state.history.filter(r => r.category === 'one').length;
+    const two = state.history.filter(r => r.category === 'two').length;
+    const total = one + two;
+    const pct = total ? Math.round(one/total*100) : 0;
+    $('#oneDigitCount').textContent = one;
+    $('#twoDigitCount').textContent = two;
+    $('#oneDigitBar').style.width = pct + '%';
+    $('#observedText').textContent = `En ${total} lanzamientos, ${one} dieron una suma de 1 dígito (${pct}%) y ${two} una suma de 2 dígitos (${100-pct}%).`;
+    if($('#theoryCompare')) $('#theoryCompare').textContent = `Comparación: en esta partida observaron ${pct}% de sumas de 1 dígito. Teóricamente se espera aproximadamente 83,3% al repetir muchas veces el experimento.`;
+
+    $('#restartBtn').classList.toggle('hidden', role !== 'host');
+    $('#analysisCard').classList.add('hidden');
+    $('#theoryCard')?.classList.add('hidden');
+    if($('#showTheoryBtn')) $('#showTheoryBtn').textContent = 'Comprobar con el espacio muestral';
+  }
+
+  $('#customizeAvatarBtn').addEventListener('click', openAvatarEditor);
+  $('#closeAvatarEditor').addEventListener('click', closeAvatarEditor);
+  $('#saveAvatarEditor').addEventListener('click', ()=>{ saveLocalAvatar(localAvatar); closeAvatarEditor(); toast('Avatar guardado.'); });
+  $('#avatarEditorModal').addEventListener('click', e=>{ if(e.target===$('#avatarEditorModal')) closeAvatarEditor(); });
+  $('#closeShop').addEventListener('click', closeShop);
+  $('#shopModal').addEventListener('click', e=>{ if(e.target===$('#shopModal')) closeShop(); });
+  $('#playerName').addEventListener('input', ()=>{ if(!$('#avatarEditorModal').classList.contains('hidden')) renderAvatarEditor(); });
+  renderStartAvatar();
+
+  $('#createBtn').addEventListener('click', initHost);
+  $('#joinBtn').addEventListener('click', initGuest);
+  $('#joinCode').addEventListener('input', e => e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''));
+  $('#joinCode').addEventListener('keydown', e => { if(e.key==='Enter') initGuest(); });
+  $('#playerName').addEventListener('keydown', e => { if(e.key==='Enter') $('#joinCode').focus(); });
+
+  $('#startGameBtn').addEventListener('click', () => dispatch('start'));
+  $('#leaveBtn').addEventListener('click', () => { safeDestroy(); location.href = location.pathname; });
+
+  $('#copyCodeBtn').addEventListener('click', async () => {
+    try{ await navigator.clipboard.writeText(roomCode); toast('Código copiado.'); }
+    catch(e){ toast('Código: ' + roomCode); }
+  });
+
+  $('#copyLinkBtn').addEventListener('click', async () => {
+    const u = new URL(location.href);
+    u.searchParams.set('room', roomCode);
+    try{ await navigator.clipboard.writeText(u.toString()); toast('Enlace copiado.'); }
+    catch(e){ toast('No se pudo copiar automáticamente.'); }
+  });
+
+  $('#showAnalysisBtn').addEventListener('click', () => {
+    $('#analysisCard').classList.remove('hidden');
+    $('#analysisCard').scrollIntoView({behavior:'smooth', block:'start'});
+  });
+
+  $('#showTheoryBtn').addEventListener('click', () => {
+    const card = $('#theoryCard');
+    const nowHidden = card.classList.toggle('hidden');
+    $('#showTheoryBtn').textContent = nowHidden ? 'Comprobar con el espacio muestral' : 'Ocultar explicación matemática';
+    if(!nowHidden) card.scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+
+  $('#restartBtn').addEventListener('click', () => dispatch('restart'));
+
+  window.addEventListener('beforeunload', safeDestroy);
+
+  const params = new URLSearchParams(location.search);
+  const roomFromUrl = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+  if(roomFromUrl) $('#joinCode').value = roomFromUrl;
+})();
+</script>
+</body>
+</html>
